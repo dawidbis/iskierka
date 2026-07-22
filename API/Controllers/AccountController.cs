@@ -17,7 +17,7 @@ public class AccountController(AppDbContext context, ITokenService tokenService)
         return await context.Users.AnyAsync(x => x.EmailAddress.ToLower() == emailAddress.ToLower());
     }
 
-    private static async Task<AppUser> CreateUser(RegisterDto registerDto)
+    private static AppUser CreateUser(RegisterDto registerDto)
     {
         using var hmac = new System.Security.Cryptography.HMACSHA512();
 
@@ -39,19 +39,15 @@ public class AccountController(AppDbContext context, ITokenService tokenService)
     }
 #endregion
 
-    [HttpPost("register")] // localhost:5001/api/account/register
+    [HttpPost("register")]
     public async Task<ActionResult<UserDto>> Register(RegisterDto registerDto)
     {
-        // Check if the email is already taken
         if (await EmailIsTaken(registerDto.EmailAddress)) return BadRequest("Email taken.");
+        
+        var user = CreateUser(registerDto); 
 
-        // Create a new user
-        var user = await CreateUser(registerDto);
-
-        // Add the user to the database
         await AddUserToDatabase(user);
-
-        // Return the user DTO with the token
+        
         return user.ToDto(tokenService);
     }
 
@@ -61,10 +57,9 @@ public class AccountController(AppDbContext context, ITokenService tokenService)
         return await context.Users.SingleOrDefaultAsync(x => x.EmailAddress.ToLower() == emailAddress.ToLower());
     }
 
-    private static async Task<bool> VerifyPassword(AppUser user, string password)
+    private static bool VerifyPassword(AppUser user, string password)
     {
         using var hmac = new System.Security.Cryptography.HMACSHA512(user.PasswordSalt);
-
         var computedHash = hmac.ComputeHash(System.Text.Encoding.UTF8.GetBytes(password));
 
         for (int i = 0; i < computedHash.Length; i++)
@@ -76,19 +71,15 @@ public class AccountController(AppDbContext context, ITokenService tokenService)
     }
 #endregion
 
-    [HttpPost("login")] // localhost:5001/api/account/login
+    [HttpPost("login")]
     public async Task<ActionResult<UserDto>> Login(LoginDto loginDto)
     {
-        // Get the user by email address
         var user = await GetUserByEmail(loginDto.EmailAddress);
 
-        // If the user is not found, return Unauthorized
         if (user == null) return Unauthorized("Invalid email address.");
-
-        // Verify the password
-        if (!await VerifyPassword(user, loginDto.Password)) return Unauthorized("Invalid password.");
-
-        // Return the user DTO with the token
+        
+        if (!VerifyPassword(user, loginDto.Password)) return Unauthorized("Invalid password."); 
+        
         return user.ToDto(tokenService);
     }
 }
